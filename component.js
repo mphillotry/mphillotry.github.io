@@ -29,9 +29,6 @@ const lerp_color = (t, c1, c2) => {
     return color(r, g, b);
 }
 
-const max = (x, y) => x > y ? x : y;
-const min = (x, y) => x < y ? x : y;
-
 class Widget extends React.Component {
     constructor(props) {
         super(props);
@@ -39,7 +36,7 @@ class Widget extends React.Component {
             frameCount: 0,
             period: 180,
             lastFrame: 0,
-            values: [0, 0, 0, 0],
+            values: [50, 50, 50, 50],
             ripples: [],
             c: c_red
         };
@@ -49,18 +46,19 @@ class Widget extends React.Component {
     componentDidMount() {
         const canvas = this.refs.canvas;
         const ctx = canvas.getContext("2d");
-        this.rAF = requestAnimationFrame(this.updateAnimationState);
+        this.raf = requestAnimationFrame(this.updateAnimationState);
     }
 
-    process(...values) {
-        let n = values.length;
+    process() {
+        let n = this.state.values.length;
         let total = 0;
+        let values = [];
         for (let i = 0; i < n; ++i) {
-            ++values[i];
+            values[i] = this.state.values[i] + 1;
             values[i] *= values[i];
             total += values[i];
         }
-        this.state.period = 180 - max(1, min(total, 80000)) * 120 / 80000;
+        this.state.period = 180 - Math.max(1, Math.min(total, 80000)) * 120 / 80000;
         for (let i = 0; i < n; ++i) {
             values[i] *= color_cycle;
             values[i] /= total;
@@ -69,6 +67,11 @@ class Widget extends React.Component {
         let t = this.state.frameCount % color_cycle;
         for (let i = 0; i < n; ++i) {
             if (t <= values[i]) {
+                // decay
+                if (this.state.values[i] > 50) {
+                    this.state.values[i] -= 0.125;
+                }
+
                 this.state.c = c_all[i];
                 let last = i == 0 ? 0 : values[i - 1];
                 let threshold = values[i] - transition;
@@ -91,60 +94,73 @@ class Widget extends React.Component {
         this.setState(prev => ({
             frameCount: prev.frameCount + 1
         }));
-        this.rAF = requestAnimationFrame(this.updateAnimationState);
+        this.raf = requestAnimationFrame(this.updateAnimationState);
+    }
+
+    circle(ctx, r, color) {
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.arc(0, 0, r, 0, 2 * Math.PI, false);
+        ctx.fill();
     }
 
     componentDidUpdate() {
-        this.process(100,
-                     60,
-                     60,
-                     60);
+        this.process();
         const canvas = this.refs.canvas;
         const ctx = canvas.getContext('2d');
-        const width = canvas.width;
-        const height = canvas.height;
+        const ripples = this.state.ripples;
         ctx.save();
         ctx.beginPath();
-        ctx.clearRect(0, 0, width, height);
-        ctx.translate(width / 2, height / 2);
-        for (let i = 0; i < this.state.ripples.length; ++i) {
-            const r = (this.state.frameCount - this.state.ripples[i].start) / this.state.ripples[i].period;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        for (let i = 0; i < ripples.length; ++i) {
+            const r = (this.state.frameCount - ripples[i].start) / ripples[i].period;
             if (r >= 1) {
-                this.state.ripples.shift();
+                ripples.shift();
                 --i;
                 continue;
             }
-            this.state.ripples[i].color = setAlpha(this.state.ripples[i].color, 1 - r);
-            ctx.beginPath();
-            ctx.fillStyle = this.state.ripples[i].color;
-            ctx.arc(0, 0, radius + r * extension, 0, 2 * Math.PI, false);
-            ctx.fill();
+            ripples[i].color = setAlpha(ripples[i].color, 1 - r);
+            this.circle(ctx, radius + r * extension, ripples[i].color);
         }
-        ctx.beginPath();
-        ctx.fillStyle = this.state.c;
-        ctx.arc(0, 0, radius, 0, 2 * Math.PI, false);
-        ctx.fill();
+        this.circle(ctx, radius, this.state.c);
         ctx.restore();
     }
 
     componentWillUnmount() {
-        cancelAnimationFrame(this.rAF);
+        cancelAnimationFrame(this.raf);
     }
 
     render() {
         return React.createElement(
-            'canvas',
-            {
-                ref: "canvas",
-                width: 400,
-                height: 400
-            },
-            null
+            'div', {},
+            React.createElement(
+                'canvas',
+                {
+                    ref: "canvas",
+                    width: 400,
+                    height: 400
+                },
+                null
+            ),
+            React.createElement('br'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[0] += 10;}}, 'R +'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[1] += 10;}}, 'G +'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[2] += 10;}}, 'B +'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[3] += 10;}}, 'Y +'),
+            React.createElement('br'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[0]  = Math.max(50, this.state.values[0] - 10);}}, 'R -'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[1]  = Math.max(50, this.state.values[1] - 10);}}, 'G -'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[2] = Math.max(50, this.state.values[2] - 10);}}, 'B -'),
+            React.createElement('button', {style: {width: '5%'}, onClick: () => {this.state.values[3] = Math.max(50, this.state.values[3] - 10);}}, 'Y -'),
+            React.createElement('br'),
+            React.createElement('p', {}, 'red: ' + this.state.values[0]),
+            React.createElement('p', {}, 'green: ' + this.state.values[1]),
+            React.createElement('p', {}, 'blue: ' + this.state.values[2]),
+            React.createElement('p', {}, 'yellow: ' + this.state.values[3])
         );
     }
 }
 
 const domContainer = document.querySelector('#container');
 ReactDOM.render(React.createElement(Widget), domContainer);
-
-// https://philna.sh/blog/2018/09/27/techniques-for-animating-on-the-canvas-in-react/
