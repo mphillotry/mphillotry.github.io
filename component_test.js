@@ -1,38 +1,8 @@
 'use strict';
 
-const radius = 50;
-const extension = 75;
-const color_cycle = 800;
-const transition = 60;
-const n_ripples = 3;
-const c_red = '#bf596a';
-const c_green = '#b9cd7c';
-const c_blue = '#69acd5';
-const c_yellow = '#dfa03b';
-const c_all = [c_red, c_green, c_blue, c_yellow];
-const fps = 60;
+const omega = 0.05;
 
-const setAlpha = (hex, alpha) => hex.substr(0, 7).concat(('0' + Math.floor(alpha * 255).toString(16)).substr(-2));
-
-const red = hex => parseInt(hex.substr(1, 2), 16);
-const green = hex => parseInt(hex.substr(3, 2), 16);
-const blue = hex => parseInt(hex.substr(5, 2), 16);
-const color = (r, g, b) => '#'.concat(('0' + r.toString(16)).substr(-2))
-                              .concat(('0' + g.toString(16)).substr(-2))
-                              .concat(('0' + b.toString(16)).substr(-2));
-
-const lerp_color = (t, c1, c2) => {
-    const r1 = red(c1), g1 = green(c1), b1 = blue(c1);
-    const r2 = red(c2), g2 = green(c2), b2 = blue(c2);
-    const r = r1 + Math.floor(t * (r2 - r1));
-    const g = g1 + Math.floor(t * (g2 - g1));
-    const b = b1 + Math.floor(t * (b2 - b1));
-    return color(r, g, b);
-}
-
-const clamp = (x, min, max) => x < min ? min : x > max ? max : x;
-
-class Widget extends React.Component {
+class Widget2 extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
@@ -42,6 +12,12 @@ class Widget extends React.Component {
             stable_values: [50, 50, 50, 50],
             values: [50, 50, 50, 50],
             ripples: [],
+            polygons: [
+                {radius: radius, angle: Math.random() * 2 * Math.PI, color: setAlpha(c_red, 0.5), dir: 1},
+                {radius: radius, angle: Math.random() * 2 * Math.PI, color: setAlpha(c_green, 0.5), dir: -1},
+                {radius: radius, angle: Math.random() * 2 * Math.PI, color: setAlpha(c_blue, 0.5), dir: 1},
+                {radius: radius, angle: Math.random() * 2 * Math.PI, color: setAlpha(c_yellow, 0.5), dir: -1}
+            ],
             c: c_red
         };
     }
@@ -57,6 +33,8 @@ class Widget extends React.Component {
     process(prev) {
         for (let i = 0; i < 4; ++i) {
             this.state.values[i] += this.props.values[i] - prev.values[i];
+            this.state.polygons[i].radius = clamp(this.state.values[i] / 150, 0.1, 1) * (radius + 0.5 * extension);
+            this.state.polygons[i].angle += omega * clamp(this.state.values[i] / 150, 0.1, 1) * this.state.polygons[i].dir;
         }
         let t = this.state.frameCount % color_cycle;
         if (t == 0) {
@@ -102,10 +80,24 @@ class Widget extends React.Component {
     }
 
     circle(ctx, r, color) {
-        ctx.beginPath();
         ctx.fillStyle = color;
+        ctx.beginPath();
         ctx.arc(0, 0, r, 0, 2 * Math.PI, false);
         ctx.fill();
+    }
+
+    polygon(ctx, theta, r, color) {
+        ctx.save();
+        ctx.rotate(theta);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(r, 0);
+        ctx.lineTo(0, r);
+        ctx.lineTo(-r, 0);
+        ctx.lineTo(0, -r);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
     }
 
     componentDidUpdate(prev) {
@@ -113,21 +105,27 @@ class Widget extends React.Component {
         const canvas = this.refs.canvas;
         const ctx = canvas.getContext('2d');
         const ripples = this.state.ripples;
+        const polygons = this.state.polygons;
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.translate(canvas.width / 2, canvas.height / 2);
 
-        for (let i = 0; i < ripples.length; ++i) {
+        ctx.globalCompositeOperation = "lighter";
+        for (let i = 0; i < polygons.length; ++i) {
+            this.polygon(ctx, polygons[i].angle, polygons[i].radius, polygons[i].color);
+        }
+
+        ctx.globalCompositeOperation = "destination-over";
+        this.circle(ctx, radius, this.state.c);
+        for (let i = ripples.length - 1; i >= 0; --i) {
             const r = (this.state.frameCount - ripples[i].start) / ripples[i].period;
             if (r >= 1) {
                 ripples.shift();
-                --i;
-                continue;
+                break;
             }
             ripples[i].color = setAlpha(ripples[i].color, 1 - r);
             this.circle(ctx, radius + r * extension, ripples[i].color);
         }
-        this.circle(ctx, radius, this.state.c);
 
         ctx.restore();
     }
@@ -152,7 +150,7 @@ class Widget extends React.Component {
     }
 }
 
-class WidgetContainer extends React.Component {
+class WidgetContainer2 extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
@@ -167,8 +165,8 @@ class WidgetContainer extends React.Component {
                 values: [
                     prev.values[0] + Math.round(Math.random() * 15) / 2,
                     prev.values[1] + Math.round(Math.random() * 3) / 2,
-                    prev.values[2] + Math.round(Math.random() * 3) / 2,
-                    prev.values[3] + Math.round(Math.random() * 3) / 2
+                    prev.values[2] + Math.round(Math.random() * 20) / 2,
+                    prev.values[3] + Math.round(Math.random() * 10) / 2
                 ]
             }));
         }, 1000);
@@ -176,7 +174,7 @@ class WidgetContainer extends React.Component {
 
     render() {
         return React.createElement(
-            Widget,
+            Widget2,
             {
                 values: this.state.values
             }
@@ -184,8 +182,8 @@ class WidgetContainer extends React.Component {
     }
 }
 
-const domContainer = document.querySelector('#container');
-const widgetContainer = React.createElement(WidgetContainer);
-ReactDOM.render(widgetContainer, domContainer);
-// const widget = React.createElement(Widget, {red: 0, green: 0, blue: 0, yellow: 0});
-// ReactDOM.render(widget, domContainer);
+const domContainer2 = document.querySelector('#container2');
+const widgetContainer2 = React.createElement(WidgetContainer2);
+ReactDOM.render(widgetContainer2, domContainer2);
+// const widget2 = React.createElement(Widget2, {red: 0, green: 0, blue: 0, yellow: 0});
+// ReactDOM.render(widget2, domContainer2);
