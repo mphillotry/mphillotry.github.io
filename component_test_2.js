@@ -1,86 +1,12 @@
 'use strict';
 
-// radius of inner circle
-const radius = 50;
-// max radius of ripple = radius + extension
-const extension = 75;
+const particle_radius = 2;
+const min_particle_speed = 4;
+const max_particle_speed = 8;
+const max_particle_trail = 8;
 
 
-
-// number of frames for cycling through the 4 colors
-const color_cycle = 800;
-// number of frames for transition between colors
-const transition = 60;
-
-
-
-// maximum number of frames a ripple can exist for
-const max_period = 180;
-// minimum number of frames a ripple can exist for
-const min_period = 60;
-// maximum magnitude for the value of a color
-const max_magnitude = 150;
-// minimum magnitude for the value of a color
-const min_magnitude = 50;
-// amount of decay per frame
-const decay = 0.125;
-
-
-
-// maximum number of ripples
-const n_ripples = 3;
-
-
-
-// colors
-const n = 4;
-const c_red = '#bf596a';
-const c_green = '#b9cd7c';
-const c_blue = '#69acd5';
-const c_yellow = '#dfa03b';
-const c_all = [c_red, c_green, c_blue, c_yellow];
-
-
-
-// frames per second
-const fps = 60;
-
-
-
-// given a color in hex string, return a hex string of the same color with given alpha
-const setAlpha = (hex, alpha) => hex.substr(0, 7).concat(('0' + Math.floor(alpha * 255).toString(16)).substr(-2));
-
-
-
-// extract components from rgb in hex
-const red = hex => parseInt(hex.substr(1, 2), 16);
-const green = hex => parseInt(hex.substr(3, 2), 16);
-const blue = hex => parseInt(hex.substr(5, 2), 16);
-
-
-
-// combine rgb components into a hex string
-const color = (r, g, b) => '#'.concat(('0' + r.toString(16)).substr(-2))
-                              .concat(('0' + g.toString(16)).substr(-2))
-                              .concat(('0' + b.toString(16)).substr(-2));
-
-
-
-// linearly interpolate colors c1 and c2 (result = t * c1 + (1 - t) * c2)
-const lerp_color = (t, c1, c2) => {
-    const r1 = red(c1), g1 = green(c1), b1 = blue(c1);
-    const r2 = red(c2), g2 = green(c2), b2 = blue(c2);
-    const r = r1 + Math.floor(t * (r2 - r1));
-    const g = g1 + Math.floor(t * (g2 - g1));
-    const b = b1 + Math.floor(t * (b2 - b1));
-    return color(r, g, b);
-}
-
-
-
-const clamp = (x, min, max) => x < min ? min : x > max ? max : x;
-
-class Widget extends React.Component {
+class Widget2 extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
@@ -89,6 +15,7 @@ class Widget extends React.Component {
             last_frame: 0,
             values: [50, 50, 50, 50],
             ripples: [],
+            particles: [], 
             c: c_red
         };
         this.key_frames = [0, 0, 0, 0];
@@ -157,6 +84,19 @@ class Widget extends React.Component {
                 if (t >= threshold) {
                     this.state.c = lerp_color((t - threshold) / transition, this.state.c, c_all[(i + 1) % n]);
                 }
+
+                if (Math.floor(Math.random() * 16) == 0) {
+                    let theta = 5 * Math.PI / 4 + Math.random() * Math.PI / 2;
+                    let speed = min_particle_speed + Math.random() * (max_particle_speed - min_particle_speed);
+                    this.state.particles.push({
+                        x: 0,
+                        y: 0,
+                        vx: speed * Math.cos(theta),
+                        vy: speed * Math.sin(theta),
+                        color: this.state.c,
+                        trail: []
+                    });
+                }
                 break;
             }
         }
@@ -182,6 +122,32 @@ class Widget extends React.Component {
 
 
 
+    particle(ctx, particle) {
+        for (let i = 0; i < particle.trail.length - 1; ++i) {
+            ctx.beginPath();
+            ctx.lineWidth = 2 * particle_radius * (i + 1) / particle.trail.length;
+            ctx.strokeStyle = setAlpha(particle.color, (i + 1) / particle.trail.length);
+            ctx.moveTo(particle.trail[i].x, particle.trail[i].y);
+            ctx.lineTo(particle.trail[i + 1].x, particle.trail[i + 1].y);
+            ctx.stroke();
+        }
+
+        if (particle.trail.length != 0) {
+            ctx.beginPath();
+            ctx.strokeStyle = particle.color;
+            ctx.lineWidth = 2 * particle_radius;
+            ctx.moveTo(particle.trail[particle.trail.length - 1].x, particle.trail[particle.trail.length - 1].y);
+            ctx.lineTo(particle.x, particle.y);
+            ctx.stroke();
+        }
+
+        ctx.fillStyle = particle.color;
+        ctx.arc(particle.x, particle.y, particle_radius, 0, 2 * Math.PI, false);
+        ctx.fill();
+    }
+
+
+
     componentDidUpdate(prev) {
         this.process(prev);
         const canvas = this.refs.canvas;
@@ -190,6 +156,25 @@ class Widget extends React.Component {
         ctx.save();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.translate(canvas.width / 2, canvas.height / 2);
+
+        for (let i = 0; i < this.state.particles.length; ++i) {
+            this.state.particles[i].trail.push({
+                x: this.state.particles[i].x,
+                y: this.state.particles[i].y
+            });
+            if (this.state.particles[i].trail.length > max_particle_trail) {
+                this.state.particles[i].trail.shift();
+            }
+            this.state.particles[i].x += this.state.particles[i].vx;
+            this.state.particles[i].y += this.state.particles[i].vy;
+            this.state.particles[i].vy += 0.1;
+            if (this.state.particles[i].y > canvas.height / 2) {
+                this.state.particles.splice(i, 1);
+                --i;
+                continue;
+            }
+            this.particle(ctx, this.state.particles[i]);
+        }
 
         for (let i = 0; i < ripples.length; ++i) {
             const r = (this.state.frame_count - ripples[i].start) / ripples[i].period;
@@ -221,8 +206,8 @@ class Widget extends React.Component {
                 'canvas',
                 {
                     ref: "canvas",
-                    width: 400,
-                    height: 400
+                    width: 800,
+                    height: 800
                 }
             ),
             React.createElement('br'),
@@ -234,7 +219,7 @@ class Widget extends React.Component {
     }
 }
 
-class WidgetContainer extends React.Component {
+class WidgetContainer2 extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
@@ -257,7 +242,7 @@ class WidgetContainer extends React.Component {
         return React.createElement(
             'div', {},
             React.createElement(
-                Widget,
+                Widget2,
                 {
                     values: this.state.values
                 }
@@ -270,9 +255,6 @@ class WidgetContainer extends React.Component {
     }
 }
 
-
-
-// render the widget
-const domContainer = document.querySelector('#container');
-const widgetContainer = React.createElement(WidgetContainer);
-ReactDOM.render(widgetContainer, domContainer);
+const domContainer2 = document.querySelector('#container2');
+const widgetContainer2 = React.createElement(WidgetContainer2);
+ReactDOM.render(widgetContainer2, domContainer2);
